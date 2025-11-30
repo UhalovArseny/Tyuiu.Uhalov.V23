@@ -1,0 +1,187 @@
+﻿@page "/tours"
+
+@using VirtualMuseum.Models
+@using VirtualMuseum.Services
+@inject ITourService TourService
+@inject IExhibitService ExhibitService
+@inject NavigationManager Nav
+
+<h3>Виртуальные туры</h3>
+
+@if (tours == null)
+{
+    <p>Загрузка...</p>
+}
+else if (!tours.Any())
+{
+    <p>Туров пока нет. Создайте первый тур ниже.</p>
+}
+else
+{
+    <div class="tours-list">
+        @foreach (var tour in tours)
+        {
+            var tourExhibitsCount = tour.ExhibitIds?.Count ?? 0;
+
+            <div class="tour-card">
+                <div class="tour-card-main">
+                    <h4>@tour.Title</h4>
+                    <p class="tour-desc">@tour.Description</p>
+
+                    <div class="tour-meta">
+                        @if (tour.StartTime.HasValue)
+                        {
+                            <div>Начало: @tour.StartTime.Value.ToString("g")</div>
+                        }
+                        @if (tour.Duration.HasValue)
+                        {
+                            <div>Длительность: @tour.Duration.Value.TotalMinutes.ToString("0") мин</div>
+                        }
+                        <div>Экспонатов в туре: @tourExhibitsCount</div>
+                    </div>
+                </div>
+
+                <div class="tour-card-actions">
+                    <a href="/tours/@tour.Id" class="tour-link">Подробнее</a>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<hr />
+
+<h4>Создать новый тур</h4>
+
+<EditForm FormName="CreateTourForm"
+          Model="newTour"
+          OnValidSubmit="CreateTour"
+          class="tour-form">
+    <div class="tour-form-row">
+        <InputText @bind-Value="newTour.Title"
+                   class="tour-input"
+                   placeholder="Название тура" />
+    </div>
+    <div class="tour-form-row">
+        <InputTextArea @bind-Value="newTour.Description"
+                       class="tour-textarea"
+                       placeholder="Краткое описание"></InputTextArea>
+    </div>
+
+    <div class="tour-form-row-inline">
+        <div class="tour-form-group">
+            <label>Дата начала</label>
+            <InputDate @bind-Value="newTour.Date" class="tour-input" />
+        </div>
+        <div class="tour-form-group">
+            <label>Время начала</label>
+            <Input type="time" @bind="newTour.Time" class="tour-input" />
+
+        </div>
+        <div class="tour-form-group">
+            <label>Длительность (мин)</label>
+            <InputNumber @bind-Value="newTour.DurationMinutes" class="tour-input" />
+        </div>
+    </div>
+
+    <div class="tour-form-row">
+        <label>Выберите экспонаты для тура:</label>
+        <div class="tour-exhibits-select">
+            @if (allExhibits != null && allExhibits.Any())
+            {
+                @foreach (var ex in allExhibits)
+                {
+                    <label class="tour-exhibit-option">
+                        <input type="checkbox"
+                               checked="@selectedExhibitIds.Contains(ex.Id)"
+                               @onchange="(e => ToggleExhibit(ex.Id, e.Value))" />
+                        <span>@ex.Name</span>
+                    </label>
+                }
+            }
+            else
+            {
+                <p>Экспонатов пока нет.</p>
+            }
+        </div>
+    </div>
+
+    <button type="submit" class="tour-button">Создать тур</button>
+</EditForm>
+
+@code {
+    private IEnumerable<Tour> tours = Enumerable.Empty<Tour>();
+    private List<Exhibit> allExhibits = new();
+    private HashSet<Guid> selectedExhibitIds = new();
+
+    private NewTourModel newTour = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        tours = await TourService.GetAllAsync();
+        allExhibits = (await ExhibitService.GetAllAsync()).ToList();
+    }
+
+    private async Task CreateTour()
+    {
+        if (string.IsNullOrWhiteSpace(newTour.Title))
+            return;
+
+        DateTime? startTime = null;
+        if (newTour.Date.HasValue && newTour.Time.HasValue)
+        {
+            startTime = new DateTime(
+                newTour.Date.Value.Year,
+                newTour.Date.Value.Month,
+                newTour.Date.Value.Day,
+                newTour.Time.Value.Hours,
+                newTour.Time.Value.Minutes,
+                0);
+        }
+
+        TimeSpan? duration = null;
+        if (newTour.DurationMinutes.HasValue && newTour.DurationMinutes.Value > 0)
+        {
+            duration = TimeSpan.FromMinutes(newTour.DurationMinutes.Value);
+        }
+
+        var tour = new Tour
+        {
+            Id = Guid.NewGuid(),
+            Title = newTour.Title,
+            Description = newTour.Description,
+            StartTime = startTime,
+            Duration = duration,
+            ExhibitIds = selectedExhibitIds.ToList()
+        };
+
+        await TourService.CreateAsync(tour);
+
+        // обновляем список
+        tours = await TourService.GetAllAsync();
+
+        // очищаем форму
+        newTour = new();
+        selectedExhibitIds.Clear();
+    }
+
+    private void ToggleExhibit(Guid id, object? isChecked)
+    {
+        bool value = isChecked is bool b && b;
+        if (value)
+            selectedExhibitIds.Add(id);
+        else
+            selectedExhibitIds.Remove(id);
+    }
+
+    private class NewTourModel
+    {
+        public string? Title { get; set; }
+        public string? Description { get; set; }
+
+        public DateTime? Date { get; set; }
+        public TimeSpan? Time { get; set; }
+
+        public int? DurationMinutes { get; set; }
+    }
+}

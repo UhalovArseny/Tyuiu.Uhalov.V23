@@ -1,0 +1,116 @@
+﻿@rendermode InteractiveServer
+@page "/exhibits/{id:guid}"
+
+@using VirtualMuseum.Models
+@using VirtualMuseum.Services
+@inject IExhibitService ExhibitService
+
+<h3>Описание экспоната</h3>
+
+@if (exhibit == null)
+{
+    <p>Экспонат не найден.</p>
+}
+else
+{
+    <div class="exhibit-details">
+        @if (!string.IsNullOrWhiteSpace(exhibit.ImagePath))
+        {
+            <img src="@exhibit.ImagePath"
+                 alt="@exhibit.Name"
+                 class="exhibit-details-image" />
+        }
+
+        <div class="exhibit-details-info">
+            <h2>@exhibit.Name</h2>
+
+            @if (!string.IsNullOrWhiteSpace(exhibit.Era))
+            {
+                <p class="exhibit-era">@exhibit.Era</p>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(exhibit.Author))
+            {
+                <p class="exhibit-author">@exhibit.Author</p>
+            }
+
+            <p>@exhibit.Description</p>
+
+            @if (exhibit.Latitude.HasValue && exhibit.Longitude.HasValue)
+            {
+                <div class="exhibit-coords">
+                    Координаты на карте: @exhibit.Latitude:F2; @exhibit.Longitude:F2
+                </div>
+            }
+
+            <a href="/exhibits" class="back-link">← Назад к списку</a>
+        </div>
+    </div>
+
+    <hr />
+
+    <h4>Оставить отзыв</h4>
+
+    <div class="feedback-form">
+        <div class="feedback-row">
+            <input class="feedback-input"
+                   placeholder="Ваше имя (необязательно)"
+                   @bind="feedbackName" />
+        </div>
+
+        <div class="feedback-row">
+            <textarea class="feedback-textarea"
+                      placeholder="Ваш отзыв"
+                      @bind="feedbackMessage"></textarea>
+        </div>
+
+        <button type="button"
+                class="feedback-button"
+                @onclick="OnSendClick">
+            Отправить
+        </button>
+    </div>
+
+    @if (showToast)
+    {
+        <div class="toast-popup">
+            Ваш отзыв успешно отправлен!
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public Guid id { get; set; }
+
+    private Exhibit? exhibit;
+
+    // поля для заглушки-отзыва
+    private string? feedbackName;
+    private string? feedbackMessage;
+    private bool showToast = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // грузим экспонат через сервис
+        exhibit = await ExhibitService.GetAsync(id);
+    }
+
+    private async Task OnSendClick()
+    {
+        // тут могли бы отправлять отзыв в сервис, но пока просто заглушка
+        if (string.IsNullOrWhiteSpace(feedbackMessage))
+            return;
+
+        showToast = true;
+        StateHasChanged();
+
+        await Task.Delay(2000);
+
+        showToast = false;
+        StateHasChanged();
+
+        // очистим поля
+        feedbackName = string.Empty;
+        feedbackMessage = string.Empty;
+    }
+}

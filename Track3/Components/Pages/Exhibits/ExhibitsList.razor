@@ -1,0 +1,93 @@
+﻿@page "/exhibits"
+
+@using VirtualMuseum.Models
+@using VirtualMuseum.Services
+@inject IExhibitService ExhibitService
+@inject NavigationManager Nav
+
+<h3>Список экспонатов</h3>
+
+@if (exhibits == null)
+{
+    <p>Загрузка...</p>
+}
+else if (!exhibits.Any())
+{
+    <p>Экспонаты отсутствуют.</p>
+}
+else
+{
+    <h4>Карта музея</h4>
+    <div class="museum-map">
+        @foreach (var ex in exhibits)
+        {
+            if (ex.Latitude.HasValue && ex.Longitude.HasValue)
+            {
+                <a class="map-point @(hoveredExhibitId == ex.Id ? "active-point" : "")"
+                   style="@GetPointStyle(ex)"
+                   title="@ex.Name"
+                   href="/exhibits/@ex.Id"
+                   @onmouseover="@(() => OnPointHover(ex.Id))"
+                   @onmouseout="@(() => OnPointHoverEnd())">
+                </a>
+            }
+        }
+    </div>
+
+
+
+    <h4 style="margin-top:1rem;">Экспонаты</h4>
+    <div class="exhibits-grid">
+        @foreach (var item in exhibits)
+        {
+            <div class="exhibit-card @(hoveredExhibitId == item.Id ? "highlight" : "")">
+                @if (!string.IsNullOrWhiteSpace(item.ImagePath))
+                {
+                    <img src="@item.ImagePath" alt="@item.Name" class="exhibit-image" />
+                }
+                <div class="exhibit-info">
+                    <h4>@item.Name</h4>
+                    <p class="exhibit-era">@item.Era</p>
+                    <p class="exhibit-author">@item.Author</p>
+                    <div class="exhibit-card-bottom">
+                        <a href="/exhibits/@item.Id" class="exhibit-link">Подробнее</a>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<Exhibit> exhibits = new();
+    private Guid? hoveredExhibitId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var list = await ExhibitService.GetAllAsync();
+        exhibits = list.ToList();
+    }
+
+    private string GetPointStyle(Exhibit ex)
+    {
+        var top = ex.Latitude!.Value;
+        var left = ex.Longitude!.Value;
+
+        return $"top: {top}%; left: {left}%;";
+    }
+
+    private void OnPointHover(Guid id)
+    {
+        hoveredExhibitId = id;
+    }
+
+    private void OnPointHoverEnd()
+    {
+        hoveredExhibitId = null;
+    }
+
+    private void GoToExhibit(Guid id)
+    {
+        Nav.NavigateTo($"/exhibits/{id}");
+    }
+}
