@@ -16,9 +16,7 @@ else
     <div class="exhibit-details">
         @if (!string.IsNullOrWhiteSpace(exhibit.ImagePath))
         {
-            <img src="@exhibit.ImagePath"
-                 alt="@exhibit.Name"
-                 class="exhibit-details-image" />
+            <img src="@exhibit.ImagePath" class="exhibit-image" />
         }
 
         <div class="exhibit-details-info">
@@ -78,6 +76,26 @@ else
         </div>
     }
 }
+
+<style>
+    .exhibit-image-container {
+        width: 100%;
+        max-width: 800px;
+        margin: 1.5rem auto;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 10px 24px rgba(0,0,0,0.4);
+    }
+
+    .exhibit-image {
+        width: 100%;
+        height: auto;
+        display: block;
+        object-fit: cover; /* красиво заполняет */
+        border-radius: 16px;
+    }
+</style>
+
 
 @code {
     [Parameter] public Guid id { get; set; }

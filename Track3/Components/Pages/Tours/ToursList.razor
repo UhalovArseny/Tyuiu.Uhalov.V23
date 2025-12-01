@@ -1,18 +1,9 @@
-﻿@page "/tours"
-
-@using VirtualMuseum.Models
-@using VirtualMuseum.Services
-@inject ITourService TourService
-@inject IExhibitService ExhibitService
-@inject NavigationManager Nav
+﻿@rendermode InteractiveServer
+@page "/tours"
 
 <h3>Виртуальные туры</h3>
 
-@if (tours == null)
-{
-    <p>Загрузка...</p>
-}
-else if (!tours.Any())
+@if (!tours.Any())
 {
     <p>Туров пока нет. Создайте первый тур ниже.</p>
 }
@@ -21,28 +12,32 @@ else
     <div class="tours-list">
         @foreach (var tour in tours)
         {
-            var tourExhibitsCount = tour.ExhibitIds?.Count ?? 0;
-
             <div class="tour-card">
                 <div class="tour-card-main">
                     <h4>@tour.Title</h4>
                     <p class="tour-desc">@tour.Description</p>
 
                     <div class="tour-meta">
-                        @if (tour.StartTime.HasValue)
+                        @if (!string.IsNullOrWhiteSpace(tour.Date) || !string.IsNullOrWhiteSpace(tour.Time))
                         {
-                            <div>Начало: @tour.StartTime.Value.ToString("g")</div>
+                            <div><b>Начало:</b> @tour.Date @tour.Time</div>
                         }
-                        @if (tour.Duration.HasValue)
+                        @if (!string.IsNullOrWhiteSpace(tour.DurationMinutes))
                         {
-                            <div>Длительность: @tour.Duration.Value.TotalMinutes.ToString("0") мин</div>
+                            <div><b>Длительность:</b> @tour.DurationMinutes мин</div>
                         }
-                        <div>Экспонатов в туре: @tourExhibitsCount</div>
+                        @if (!string.IsNullOrWhiteSpace(tour.ExhibitCount))
+                        {
+                            <div><b>Экспонатов в туре:</b> @tour.ExhibitCount</div>
+                        }
                     </div>
                 </div>
 
                 <div class="tour-card-actions">
-                    <a href="/tours/@tour.Id" class="tour-link">Подробнее</a>
+                    <button class="tour-button-danger"
+                            @onclick="() => DeleteTour(tour)">
+                        Удалить тур
+                    </button>
                 </div>
             </div>
         }
@@ -53,135 +48,107 @@ else
 
 <h4>Создать новый тур</h4>
 
-<EditForm FormName="CreateTourForm"
-          Model="newTour"
-          OnValidSubmit="CreateTour"
-          class="tour-form">
+<div class="tour-form">
     <div class="tour-form-row">
-        <InputText @bind-Value="newTour.Title"
-                   class="tour-input"
-                   placeholder="Название тура" />
+        <input class="tour-input"
+               placeholder="Название тура"
+               @bind="form.Title" />
     </div>
+
     <div class="tour-form-row">
-        <InputTextArea @bind-Value="newTour.Description"
-                       class="tour-textarea"
-                       placeholder="Краткое описание"></InputTextArea>
+        <textarea class="tour-textarea"
+                  placeholder="Краткое описание"
+                  @bind="form.Description"></textarea>
     </div>
 
     <div class="tour-form-row-inline">
         <div class="tour-form-group">
             <label>Дата начала</label>
-            <InputDate @bind-Value="newTour.Date" class="tour-input" />
+            <input type="text"
+                   class="tour-input"
+                   placeholder="Например: 12.12.2025"
+                   @bind="form.Date" />
         </div>
+
         <div class="tour-form-group">
             <label>Время начала</label>
-            <Input type="time" @bind="newTour.Time" class="tour-input" />
-
+            <input type="text"
+                   class="tour-input"
+                   placeholder="Например: 14:30"
+                   @bind="form.Time" />
         </div>
+
         <div class="tour-form-group">
             <label>Длительность (мин)</label>
-            <InputNumber @bind-Value="newTour.DurationMinutes" class="tour-input" />
+            <input type="text"
+                   class="tour-input"
+                   placeholder="Например: 60"
+                   @bind="form.DurationMinutes" />
         </div>
     </div>
 
     <div class="tour-form-row">
-        <label>Выберите экспонаты для тура:</label>
-        <div class="tour-exhibits-select">
-            @if (allExhibits != null && allExhibits.Any())
-            {
-                @foreach (var ex in allExhibits)
-                {
-                    <label class="tour-exhibit-option">
-                        <input type="checkbox"
-                               checked="@selectedExhibitIds.Contains(ex.Id)"
-                               @onchange="(e => ToggleExhibit(ex.Id, e.Value))" />
-                        <span>@ex.Name</span>
-                    </label>
-                }
-            }
-            else
-            {
-                <p>Экспонатов пока нет.</p>
-            }
-        </div>
+        <label>Количество экспонатов в туре</label>
+        <input type="text"
+               class="tour-input"
+               placeholder="Например: 5"
+               @bind="form.ExhibitCount" />
     </div>
 
-    <button type="submit" class="tour-button">Создать тур</button>
-</EditForm>
+    <button class="tour-button" @onclick="CreateTour">
+        Создать тур
+    </button>
+</div>
 
 @code {
-    private IEnumerable<Tour> tours = Enumerable.Empty<Tour>();
-    private List<Exhibit> allExhibits = new();
-    private HashSet<Guid> selectedExhibitIds = new();
+    private List<TourViewModel> tours = new();
 
-    private NewTourModel newTour = new();
+    private TourFormModel form = new();
 
-    protected override async Task OnInitializedAsync()
+    private void CreateTour()
     {
-        tours = await TourService.GetAllAsync();
-        allExhibits = (await ExhibitService.GetAllAsync()).ToList();
-    }
-
-    private async Task CreateTour()
-    {
-        if (string.IsNullOrWhiteSpace(newTour.Title))
+        if (string.IsNullOrWhiteSpace(form.Title))
             return;
 
-        DateTime? startTime = null;
-        if (newTour.Date.HasValue && newTour.Time.HasValue)
+        var tour = new TourViewModel
         {
-            startTime = new DateTime(
-                newTour.Date.Value.Year,
-                newTour.Date.Value.Month,
-                newTour.Date.Value.Day,
-                newTour.Time.Value.Hours,
-                newTour.Time.Value.Minutes,
-                0);
-        }
-
-        TimeSpan? duration = null;
-        if (newTour.DurationMinutes.HasValue && newTour.DurationMinutes.Value > 0)
-        {
-            duration = TimeSpan.FromMinutes(newTour.DurationMinutes.Value);
-        }
-
-        var tour = new Tour
-        {
-            Id = Guid.NewGuid(),
-            Title = newTour.Title,
-            Description = newTour.Description,
-            StartTime = startTime,
-            Duration = duration,
-            ExhibitIds = selectedExhibitIds.ToList()
+            Title = form.Title!.Trim(),
+            Description = form.Description?.Trim(),
+            Date = form.Date,
+            Time = form.Time,
+            DurationMinutes = form.DurationMinutes,
+            ExhibitCount = form.ExhibitCount
         };
 
-        await TourService.CreateAsync(tour);
+        tours.Add(tour);
 
-        // обновляем список
-        tours = await TourService.GetAllAsync();
-
-        // очищаем форму
-        newTour = new();
-        selectedExhibitIds.Clear();
+        form = new TourFormModel();
+        StateHasChanged();
     }
 
-    private void ToggleExhibit(Guid id, object? isChecked)
+    private void DeleteTour(TourViewModel tour)
     {
-        bool value = isChecked is bool b && b;
-        if (value)
-            selectedExhibitIds.Add(id);
-        else
-            selectedExhibitIds.Remove(id);
+        tours.Remove(tour);
+        StateHasChanged();
     }
 
-    private class NewTourModel
+    private class TourViewModel
+    {
+        public string Title { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string? Date { get; set; }
+        public string? Time { get; set; }
+        public string? DurationMinutes { get; set; }
+        public string? ExhibitCount { get; set; }
+    }
+
+    private class TourFormModel
     {
         public string? Title { get; set; }
         public string? Description { get; set; }
-
-        public DateTime? Date { get; set; }
-        public TimeSpan? Time { get; set; }
-
-        public int? DurationMinutes { get; set; }
+        public string? Date { get; set; }
+        public string? Time { get; set; }
+        public string? DurationMinutes { get; set; }
+        public string? ExhibitCount { get; set; }
     }
 }
