@@ -12,21 +12,36 @@
 
 <div class="auth-card">
 
-    <form method="post" action="/auth/login">
-        <input class="auth-input" name="userName" placeholder="Логин" />
-        <input class="auth-input" name="password" type="password" placeholder="Пароль" />
-        <button class="nav-btn" type="submit">Войти</button>
-    </form>
+    <input class="auth-input" placeholder="Логин" @bind="loginUser" />
+    <input class="auth-input" type="password" placeholder="Пароль" @bind="loginPass" />
+
+
+    <button type="button" class="nav-btn" @onclick="DoLogin">Войти</button>
+
+    @if (!string.IsNullOrWhiteSpace(loginError))
+    {
+        <div class="auth-error">@loginError</div>
+    }
 
     <hr class="auth-sep" />
 
     <div class="auth-subtitle">Нет аккаунта? Регистрация</div>
 
-    <form method="post" action="/auth/register">
-        <input class="auth-input" name="userName" placeholder="Новый логин" />
-        <input class="auth-input" name="password" type="password" placeholder="Новый пароль" />
-        <button class="nav-btn secondary" type="submit">Зарегистрироваться</button>
-    </form>
+    <input class="auth-input" placeholder="Новый логин" @bind="regUser" />
+    <input class="auth-input" type="password" placeholder="Новый пароль" @bind="regPass" />
+
+    <button type="button" class="nav-btn secondary" @onclick="DoRegister">
+        Зарегистрироваться
+    </button>
+
+    @if (!string.IsNullOrWhiteSpace(regError))
+    {
+        <div class="auth-error">@regError</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(regOk))
+    {
+        <div class="auth-ok">@regOk</div>
+    }
 
 </div>
 
@@ -42,8 +57,13 @@
 
     private async Task DoLogin()
     {
-        Console.WriteLine("DOLOGIN START");
         loginError = null;
+
+        if (string.IsNullOrWhiteSpace(loginUser) || string.IsNullOrWhiteSpace(loginPass))
+        {
+            loginError = "Введите логин и пароль.";
+            return;
+        }
 
         var content = new FormUrlEncodedContent(new Dictionary<string, string>
         {
@@ -51,19 +71,17 @@
             ["password"] = loginPass
         });
 
-        Console.WriteLine("SENDING REQUEST...");
         var http = HttpClientFactory.CreateClient("ServerAPI");
         var resp = await http.PostAsync("auth/login", content);
 
         if (!resp.IsSuccessStatusCode)
         {
-            loginError = "Неверный логин или пароль.";
+            loginError = await resp.Content.ReadAsStringAsync();
             return;
         }
 
         Nav.NavigateTo("/user", forceLoad: true);
     }
-
 
     private async Task DoRegister()
     {

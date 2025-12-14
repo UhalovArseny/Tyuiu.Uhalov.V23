@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Track3.Components;
 using Track3.Components.Data;
+using Track3.Components.Services.Implementations;
 using VirtualMuseum.Data;
 using VirtualMuseum.Services;
 
@@ -31,7 +32,7 @@ namespace Track3
             builder.Services.AddSingleton<ITourService, TourService>();
             builder.Services.AddSingleton<IFeedbackService, FeedbackService>();
             builder.Services.AddSingleton<IVisitorService, VisitorService>();
-            builder.Services.AddSingleton<ICurrentVisitorService, CurrentVisitorService>();
+           
             
 
             // SQLite БД
@@ -42,22 +43,16 @@ namespace Track3
             builder.Services.AddScoped<AuthService>();
             // и если CurrentVisitorService работает с БД — тоже AddScoped
 
-
-
             builder.Services
-            .AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-                options.DefaultSignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-                options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-            })
-            .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, o =>
-            {
-                o.Cookie.Name = "VM_AUTH";
-                o.LoginPath = "/login";
-                o.AccessDeniedPath = "/login";
-            });
+                .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+                .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, o =>
+                {
+                    o.Cookie.Name = "VM_AUTH";
+                    o.LoginPath = "/login";
+                    o.AccessDeniedPath = "/login";
+                });
 
+            builder.Services.AddAuthorization();
             // <-- добавь
             builder.Services.AddAuthorizationCore();   // <-- добавь (для Blazor компонентов)
 
@@ -65,6 +60,7 @@ namespace Track3
 
             builder.Services.AddHttpContextAccessor();
             builder.Services.AddControllers();
+
 
 
             builder.Services.AddHttpClient("ServerAPI", client =>
@@ -100,19 +96,29 @@ namespace Track3
             app.UseAuthentication();
             app.UseAuthorization();
 
+            app.MapGet("/auth/debug/user-exists/{name}", async (AppDbContext db, string name) =>
+            {
+                name = (name ?? "").Trim();
+                var exists = await db.Users.AnyAsync(u => u.UserName == name);
+                return Results.Ok(new { name, exists });
+            }).AllowAnonymous();
+
             app.MapPost("/auth/login", async (HttpContext http, AuthService auth) =>
             {
                 var form = await http.Request.ReadFormAsync();
-                var userName = form["userName"].ToString().Trim();
+                var userName = form["userName"].ToString();
                 var password = form["password"].ToString();
 
                 var principal = await auth.LoginAsync(userName, password);
+
                 if (principal == null)
-                    return Results.BadRequest("bad");
+                {
+                    // важно: вернём текст, чтобы ты видел причину
+                    return Results.BadRequest("bad_login_or_password");
+                }
 
                 await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
-                return Results.Redirect("/");
-
+                return Results.Ok("ok");
             }).AllowAnonymous();
 
 
@@ -122,13 +128,13 @@ namespace Track3
                 var userName = form["userName"].ToString().Trim();
                 var password = form["password"].ToString();
 
-                var (ok, _) = await auth.RegisterAsync(userName, password);
+                var (ok, err) = await auth.RegisterAsync(userName, password);
                 if (!ok)
-                    return Results.Redirect("/login");
-
+                    return Results.BadRequest(err ?? "exists");
 
                 return Results.Ok();
             }).AllowAnonymous();
+
 
 
             app.MapPost("/auth/logout", async (HttpContext http) =>

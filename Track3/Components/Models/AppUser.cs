@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Track3.Components.Models
 {
@@ -21,21 +22,34 @@ namespace Track3.Components.Models
 
     public class VisitedExhibit
     {
-        [Key] public int Id { get; set; }
+        [Key]
+        public int Id { get; set; }
+
+        // FK → пользователь
+        public int UserId { get; set; }
+
+        // FK → экспонат
         public Guid ExhibitId { get; set; }
 
-        public int AppUserId { get; set; }
-        public AppUser AppUser { get; set; } = null!;
         public DateTime VisitedAtUtc { get; set; } = DateTime.UtcNow;
+
+        // навигация (необязательно, но полезно)
+        [ForeignKey(nameof(UserId))]
+        public AppUser? User { get; set; }
     }
 
     public class VisitedTour
     {
-        [Key] public int Id { get; set; }
+        [Key]
+        public int Id { get; set; }
+
+        public int UserId { get; set; }
+
         public Guid TourId { get; set; }
 
-        public int AppUserId { get; set; }
-        public AppUser AppUser { get; set; } = null!;
         public DateTime VisitedAtUtc { get; set; } = DateTime.UtcNow;
+
+        [ForeignKey(nameof(UserId))]
+        public AppUser? User { get; set; }
     }
 }

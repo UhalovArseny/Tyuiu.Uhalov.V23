@@ -3,10 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using Track3.Components.Data;
 using Track3.Components.Models;
-using Track3.Components.Services.Implementations;
 using VirtualMuseum.Models;
 
-namespace VirtualMuseum.Services
+namespace Track3.Components.Services.Implementations
 {
     public class AuthService
     {
@@ -21,6 +20,7 @@ namespace VirtualMuseum.Services
         public async Task<(bool ok, string? error)> RegisterAsync(string userName, string password)
         {
             userName = (userName ?? "").Trim();
+            password = (password ?? "").Trim();
 
             if (string.IsNullOrWhiteSpace(userName) || string.IsNullOrWhiteSpace(password))
                 return (false, "Введите логин и пароль.");
@@ -46,7 +46,7 @@ namespace VirtualMuseum.Services
         public async Task<ClaimsPrincipal?> LoginAsync(string userName, string password)
         {
             userName = (userName ?? "").Trim();
-
+            password = (password ?? "").Trim();
             var user = await _db.Users.SingleOrDefaultAsync(u => u.UserName == userName);
             if (user == null)
                 return null;
@@ -61,8 +61,8 @@ namespace VirtualMuseum.Services
 
             var claims = new List<Claim>
             {
-                new(ClaimTypes.Name, user.UserName),
-                new("uid", user.Id.ToString())
+                new Claim(ClaimTypes.Name, user.UserName),
+                new Claim("uid", user.Id.ToString())
             };
 
             var identity = new ClaimsIdentity(

@@ -1,14 +1,18 @@
-﻿@page "/exhibits"
+﻿@rendermode InteractiveServer
+@page "/exhibits"
 @attribute [Authorize]
 
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
 @using VirtualMuseum.Models
 @using VirtualMuseum.Services
+@using Track3.Components.Data
+
 @inject IExhibitService ExhibitService
 @inject NavigationManager Nav
-@inject ICurrentVisitorService CurrentVisitor
-
-
+@inject AppDbContext Db
+@inject AuthenticationStateProvider AuthStateProvider
 
 <h3>Список экспонатов</h3>
 
@@ -33,13 +37,11 @@ else
                    title="@ex.Name"
                    href="/exhibits/@ex.Id"
                    @onmouseover="@(() => OnPointHover(ex.Id))"
-                   @onmouseout="@(() => OnPointHoverEnd())">
+                   @onmouseout="@OnPointHoverEnd">
                 </a>
             }
         }
     </div>
-
-
 
     <h4 style="margin-top:1rem;">Экспонаты</h4>
     <div class="exhibits-grid">
@@ -47,20 +49,21 @@ else
         {
             <div class="exhibit-card @(hoveredExhibitId == item.Id ? "highlight" : "")">
 
-                @if (CurrentVisitor.Current is not null && CurrentVisitor.HasVisitedExhibit(item.Id))
+                @if (visitedIds.Contains(item.Id))
                 {
                     <span class="visited-chip">Посещено</span>
                 }
-
 
                 @if (!string.IsNullOrWhiteSpace(item.ImagePath))
                 {
                     <img src="@item.ImagePath" alt="@item.Name" class="exhibit-image" />
                 }
+
                 <div class="exhibit-info">
                     <h4>@item.Name</h4>
                     <p class="exhibit-era">@item.Era</p>
                     <p class="exhibit-author">@item.Author</p>
+
                     <div class="exhibit-card-bottom">
                         <a href="/exhibits/@item.Id" class="exhibit-link">Подробнее</a>
                     </div>
@@ -74,32 +77,43 @@ else
     private List<Exhibit> exhibits = new();
     private Guid? hoveredExhibitId;
 
+    // сюда загрузим все посещённые экспонаты пользователя
+    private HashSet<Guid> visitedIds = new();
+
     protected override async Task OnInitializedAsync()
     {
-        var list = await ExhibitService.GetAllAsync();
-        exhibits = list.ToList();
+        exhibits = (await ExhibitService.GetAllAsync()).ToList();
+        await LoadVisitedIds();
+    }
+
+    private async Task LoadVisitedIds()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated != true)
+            return;
+
+        var uidStr = user.FindFirst("uid")?.Value;
+        if (!int.TryParse(uidStr, out var uid))
+            return;
+
+        // ВАЖНО: тут поле обычно UserId, НЕ UserID
+        var ids = await Db.VisitedExhibits
+            .Where(v => v.UserId == uid)
+            .Select(v => v.ExhibitId)
+            .ToListAsync();
+
+        visitedIds = ids.ToHashSet();
     }
 
     private string GetPointStyle(Exhibit ex)
     {
         var top = ex.Latitude!.Value;
         var left = ex.Longitude!.Value;
-
         return $"top: {top}%; left: {left}%;";
     }
 
-    private void OnPointHover(Guid id)
-    {
-        hoveredExhibitId = id;
-    }
-
-    private void OnPointHoverEnd()
-    {
-        hoveredExhibitId = null;
-    }
-
-    private void GoToExhibit(Guid id)
-    {
-        Nav.NavigateTo($"/exhibits/{id}");
-    }
+    private void OnPointHover(Guid id) => hoveredExhibitId = id;
+    private void OnPointHoverEnd() => hoveredExhibitId = null;
 }

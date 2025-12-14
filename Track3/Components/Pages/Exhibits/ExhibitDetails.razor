@@ -3,11 +3,17 @@
 @attribute [Authorize]
 
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
 @using VirtualMuseum.Models
 @using VirtualMuseum.Services
-@inject IExhibitService ExhibitService
-@inject ICurrentVisitorService CurrentVisitor
+@using Track3.Components.Data
+@using Track3.Components.Models
 
+@inject IExhibitService ExhibitService
+@inject AppDbContext Db
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
 
 <h3>Описание экспоната</h3>
 
@@ -45,28 +51,23 @@ else
                 </div>
             }
 
-            @if (CurrentVisitor.Current is not null)
-            {
-                <div class="visit-status">
-                    @if (CurrentVisitor.HasVisitedExhibit(exhibit.Id))
-                    {
-                        <span class="visited-badge">Этот экспонат уже посещён вами</span>
-                    }
-                    else
-                    {
-                        <button class="visit-button" @onclick="MarkVisited">
-                            Отметить как посещённый
-                        </button>
-                    }
-                </div>
-            }
-            else
-            {
-                <p class="visit-hint">
-                    <a href="/login">Войдите</a>, чтобы отмечать посещённые экспонаты.
-                </p>
-            }
+            <div class="visit-status">
+                @if (visited)
+                {
+                    <span class="visited-badge">Этот экспонат уже посещён вами</span>
+                }
+                else
+                {
+                    <button class="visit-button" @onclick="MarkVisited">
+                        Отметить как посещённый
+                    </button>
+                }
+            </div>
 
+            @if (!string.IsNullOrWhiteSpace(visitToast))
+            {
+                <div class="toast-popup">@visitToast</div>
+            }
 
             <a href="/exhibits" class="back-link">← Назад к списку</a>
         </div>
@@ -105,50 +106,96 @@ else
 }
 
 <style>
-    .exhibit-image-container {
-        width: 100%;
-        max-width: 800px;
-        margin: 1.5rem auto;
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 10px 24px rgba(0,0,0,0.4);
-    }
-
     .exhibit-image {
         width: 100%;
+        max-width: 900px;
         height: auto;
         display: block;
-        object-fit: cover; /* красиво заполняет */
+        object-fit: contain;
         border-radius: 16px;
+        box-shadow: 0 10px 24px rgba(0,0,0,0.4);
+        margin: 10px 0 16px;
     }
 </style>
-
 
 @code {
     [Parameter] public Guid id { get; set; }
 
     private Exhibit? exhibit;
 
-    // поля для заглушки-отзыва
+    private bool visited;
+    private string? visitToast;
+
     private string? feedbackName;
     private string? feedbackMessage;
-    private bool showToast = false;
-    private async Task MarkVisited()
-    {
-        await CurrentVisitor.MarkExhibitVisitedAsync(exhibit.Id);
-        StateHasChanged();
-    }
-
+    private bool showToast;
 
     protected override async Task OnInitializedAsync()
     {
-        // грузим экспонат через сервис
         exhibit = await ExhibitService.GetAsync(id);
+        await LoadVisited();
+    }
+
+    private async Task LoadVisited()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated != true || exhibit == null)
+            return;
+
+        var uidStr = user.FindFirst("uid")?.Value;
+        if (!int.TryParse(uidStr, out var uid))
+            return;
+
+        visited = await Db.VisitedExhibits
+            .AnyAsync(v => v.UserId == uid && v.ExhibitId == exhibit.Id);
+    }
+
+    private async Task MarkVisited()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated != true || exhibit == null)
+        {
+            Nav.NavigateTo("/login", forceLoad: true);
+            return;
+        }
+
+        var uidStr = user.FindFirst("uid")?.Value;
+        if (!int.TryParse(uidStr, out var uid))
+            return;
+
+        visited = await Db.VisitedExhibits
+            .AnyAsync(v => v.UserId == uid && v.ExhibitId == exhibit.Id);
+
+        var exists = await Db.VisitedExhibits
+            .AnyAsync(v => v.UserId == uid && v.ExhibitId == exhibit.Id);
+
+        if (!exists)
+        {
+            Db.VisitedExhibits.Add(new VisitedExhibit
+            {
+                UserId = uid,
+                ExhibitId = exhibit.Id,
+                VisitedAtUtc = DateTime.UtcNow
+            });
+
+            await Db.SaveChangesAsync();
+        }
+
+        visited = true;
+
+        visitToast = "Добавлено в посещённые ✅";
+        StateHasChanged();
+        await Task.Delay(1500);
+        visitToast = null;
+        StateHasChanged();
     }
 
     private async Task OnSendClick()
     {
-        // тут могли бы отправлять отзыв в сервис, но пока просто заглушка
         if (string.IsNullOrWhiteSpace(feedbackMessage))
             return;
 
@@ -160,7 +207,6 @@ else
         showToast = false;
         StateHasChanged();
 
-        // очистим поля
         feedbackName = string.Empty;
         feedbackMessage = string.Empty;
     }
