@@ -1,9 +1,13 @@
 ﻿@rendermode InteractiveServer
 @page "/exhibits/{id:guid}"
+@attribute [Authorize]
 
+@using Microsoft.AspNetCore.Authorization
 @using VirtualMuseum.Models
 @using VirtualMuseum.Services
 @inject IExhibitService ExhibitService
+@inject ICurrentVisitorService CurrentVisitor
+
 
 <h3>Описание экспоната</h3>
 
@@ -40,6 +44,29 @@ else
                     Координаты на карте: @exhibit.Latitude:F2; @exhibit.Longitude:F2
                 </div>
             }
+
+            @if (CurrentVisitor.Current is not null)
+            {
+                <div class="visit-status">
+                    @if (CurrentVisitor.HasVisitedExhibit(exhibit.Id))
+                    {
+                        <span class="visited-badge">Этот экспонат уже посещён вами</span>
+                    }
+                    else
+                    {
+                        <button class="visit-button" @onclick="MarkVisited">
+                            Отметить как посещённый
+                        </button>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="visit-hint">
+                    <a href="/login">Войдите</a>, чтобы отмечать посещённые экспонаты.
+                </p>
+            }
+
 
             <a href="/exhibits" class="back-link">← Назад к списку</a>
         </div>
@@ -106,6 +133,12 @@ else
     private string? feedbackName;
     private string? feedbackMessage;
     private bool showToast = false;
+    private async Task MarkVisited()
+    {
+        await CurrentVisitor.MarkExhibitVisitedAsync(exhibit.Id);
+        StateHasChanged();
+    }
+
 
     protected override async Task OnInitializedAsync()
     {

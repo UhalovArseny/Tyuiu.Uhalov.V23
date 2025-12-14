@@ -1,6 +1,12 @@
-﻿using Track3.Components;
+﻿using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using Track3.Components;
+using Track3.Components.Data;
 using VirtualMuseum.Data;
 using VirtualMuseum.Services;
+
 
 
 namespace Track3
@@ -25,8 +31,57 @@ namespace Track3
             builder.Services.AddSingleton<ITourService, TourService>();
             builder.Services.AddSingleton<IFeedbackService, FeedbackService>();
             builder.Services.AddSingleton<IVisitorService, VisitorService>();
+            builder.Services.AddSingleton<ICurrentVisitorService, CurrentVisitorService>();
+            
+
+            // SQLite БД
+            builder.Services.AddDbContext<AppDbContext>(o =>
+                o.UseSqlite("Data Source=museum.db"));
+
+            // Auth
+            builder.Services.AddScoped<AuthService>();
+            // и если CurrentVisitorService работает с БД — тоже AddScoped
+
+
+
+            builder.Services
+            .AddAuthentication(options =>
+            {
+                options.DefaultAuthenticateScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+                options.DefaultSignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+                options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+            })
+            .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, o =>
+            {
+                o.Cookie.Name = "VM_AUTH";
+                o.LoginPath = "/login";
+                o.AccessDeniedPath = "/login";
+            });
+
+            // <-- добавь
+            builder.Services.AddAuthorizationCore();   // <-- добавь (для Blazor компонентов)
+
+            builder.Services.AddCascadingAuthenticationState();
+
+            builder.Services.AddHttpContextAccessor();
+            builder.Services.AddControllers();
+
+
+            builder.Services.AddHttpClient("ServerAPI", client =>
+            {
+                client.BaseAddress = new Uri("https://localhost:7231/");
+            });
+
+            builder.Services.AddHttpContextAccessor();
+
 
             var app = builder.Build();
+
+            using (var scope = app.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                db.Database.EnsureCreated();
+            }
 
             // Configure the HTTP request pipeline.
             if (!app.Environment.IsDevelopment())
@@ -39,10 +94,59 @@ namespace Track3
             app.UseHttpsRedirection();
 
             app.UseStaticFiles();
+
+            app.UseRouting();
+
+            app.UseAuthentication();
+            app.UseAuthorization();
+
+            app.MapPost("/auth/login", async (HttpContext http, AuthService auth) =>
+            {
+                var form = await http.Request.ReadFormAsync();
+                var userName = form["userName"].ToString().Trim();
+                var password = form["password"].ToString();
+
+                var principal = await auth.LoginAsync(userName, password);
+                if (principal == null)
+                    return Results.BadRequest("bad");
+
+                await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+                return Results.Redirect("/");
+
+            }).AllowAnonymous();
+
+
+            app.MapPost("/auth/register", async (HttpContext http, AuthService auth) =>
+            {
+                var form = await http.Request.ReadFormAsync();
+                var userName = form["userName"].ToString().Trim();
+                var password = form["password"].ToString();
+
+                var (ok, _) = await auth.RegisterAsync(userName, password);
+                if (!ok)
+                    return Results.Redirect("/login");
+
+
+                return Results.Ok();
+            }).AllowAnonymous();
+
+
+            app.MapPost("/auth/logout", async (HttpContext http) =>
+            {
+                await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                return Results.Ok();
+            });
+
+
             app.UseAntiforgery();
 
+
+
+            
+
             app.MapRazorComponents<App>()
-                .AddInteractiveServerRenderMode();
+                .AddInteractiveServerRenderMode()
+                .AllowAnonymous(); // ← разрешает framework
 
             app.Run();
         }

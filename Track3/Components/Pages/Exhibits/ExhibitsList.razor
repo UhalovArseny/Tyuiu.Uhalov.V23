@@ -1,9 +1,14 @@
 ﻿@page "/exhibits"
+@attribute [Authorize]
 
+@using Microsoft.AspNetCore.Authorization
 @using VirtualMuseum.Models
 @using VirtualMuseum.Services
 @inject IExhibitService ExhibitService
 @inject NavigationManager Nav
+@inject ICurrentVisitorService CurrentVisitor
+
+
 
 <h3>Список экспонатов</h3>
 
@@ -41,6 +46,13 @@ else
         @foreach (var item in exhibits)
         {
             <div class="exhibit-card @(hoveredExhibitId == item.Id ? "highlight" : "")">
+
+                @if (CurrentVisitor.Current is not null && CurrentVisitor.HasVisitedExhibit(item.Id))
+                {
+                    <span class="visited-chip">Посещено</span>
+                }
+
+
                 @if (!string.IsNullOrWhiteSpace(item.ImagePath))
                 {
                     <img src="@item.ImagePath" alt="@item.Name" class="exhibit-image" />

@@ -1,4 +1,4 @@
-﻿using VirtualMuseum.Models;
+﻿using Track3.Components.Models;
 
 namespace VirtualMuseum.Services
 {

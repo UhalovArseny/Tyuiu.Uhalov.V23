@@ -1,0 +1,174 @@
+﻿@rendermode InteractiveServer
+@page "/user"
+@attribute [Authorize]
+
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Track3.Components.Data
+@using Track3.Components.Models
+@using VirtualMuseum.Models
+
+@inject AppDbContext Db
+@inject IExhibitService ExhibitService
+@inject ITourService TourService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthStateProvider
+@implements IDisposable
+
+
+
+<h3>Профиль</h3>
+
+@if (loading)
+{
+    <p>Загрузка профиля...</p>
+}
+else if (me is null)
+{
+    <p>Пользователь не найден.</p>
+}
+else
+{
+    <div class="user-card">
+        <h4>@me.UserName</h4>
+        <p class="user-meta">
+            Регистрация: @me.CreatedAtUtc.ToLocalTime().ToString("g") <br />
+            Последний вход: @(me.LastLoginUtc?.ToLocalTime().ToString("g") ?? "нет данных")
+        </p>
+
+        <div class="user-stats">
+            <div class="user-stat-block">
+                <h5>Экспонаты</h5>
+                <p>@visitedExhibits.Count / @allExhibits.Count</p>
+            </div>
+            <div class="user-stat-block">
+                <h5>Туры</h5>
+                <p>@visitedTours.Count / @allTours.Count</p>
+            </div>
+            <div class="user-stat-block">
+                <h5>Прогресс</h5>
+                <p>@progressPercent%</p>
+            </div>
+        </div>
+
+        <h4>Посещённые экспонаты</h4>
+        @if (!visitedExhibits.Any())
+        {
+            <p>Пока пусто. Открой экспонат и нажми “Отметить как посещённый”.</p>
+        }
+        else
+        {
+            <ul class="user-list">
+                @foreach (var ex in visitedExhibits)
+                {
+                    <li>
+                        <a href="/exhibits/@ex.Id">@ex.Name</a>
+                        @if (!string.IsNullOrWhiteSpace(ex.Era))
+                        {
+                            <span class="user-tag">@ex.Era</span>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+
+        <h4>Посещённые туры</h4>
+        @if (!visitedTours.Any())
+        {
+            <p>Пока пусто.</p>
+        }
+        else
+        {
+            <ul class="user-list">
+                @foreach (var t in visitedTours)
+                {
+                    <li>
+                        <span>@t.Title</span>
+                        @if (t.StartTime.HasValue)
+                        {
+                            <span class="user-tag">@t.StartTime.Value.ToString("g")</span>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+}
+
+@code {
+    private bool loading = true;
+
+    private AppUser? me;
+
+    private List<VirtualMuseum.Models.Exhibit> allExhibits = new();
+    private List<VirtualMuseum.Models.Tour> allTours = new();
+
+    private List<VirtualMuseum.Models.Exhibit> visitedExhibits = new();
+    private List<VirtualMuseum.Models.Tour> visitedTours = new();
+
+    private int progressPercent = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProfileAsync();
+    }
+
+    private async Task LoadProfileAsync()
+    {
+        loading = true;
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        var uidStr = user.FindFirst("uid")?.Value;
+        if (!int.TryParse(uidStr, out var uid))
+        {
+            me = null;
+            loading = false;
+            return;
+        }
+
+        me = await Db.Users
+            .Include(x => x.VisitedExhibits)
+            .Include(x => x.VisitedTours)
+            .FirstOrDefaultAsync(x => x.Id == uid);
+
+        // подгрузка списков для отображения
+        allExhibits = (await ExhibitService.GetAllAsync()).ToList();
+        allTours = (await TourService.GetAllAsync()).ToList();
+
+        if (me != null)
+        {
+            var visitedExIds = me.VisitedExhibits.Select(v => v.ExhibitId).ToHashSet();
+            var visitedTourIds = me.VisitedTours.Select(v => v.TourId).ToHashSet();
+
+            visitedExhibits = allExhibits.Where(e => visitedExIds.Contains(e.Id)).ToList();
+            visitedTours = allTours.Where(t => visitedTourIds.Contains(t.Id)).ToList();
+
+            var total = allExhibits.Count + allTours.Count;
+            var done = visitedExhibits.Count + visitedTours.Count;
+            progressPercent = total == 0 ? 0 : (int)Math.Round(done * 100.0 / total);
+        }
+
+        loading = false;
+    }
+
+    protected override void OnInitialized()
+    {
+        AuthStateProvider.AuthenticationStateChanged += OnAuthChanged;
+    }
+
+    private async void OnAuthChanged(Task<AuthenticationState> task)
+    {
+        await LoadProfileAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        AuthStateProvider.AuthenticationStateChanged -= OnAuthChanged;
+    }
+
+}

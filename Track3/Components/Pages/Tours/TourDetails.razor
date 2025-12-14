@@ -1,6 +1,8 @@
 ﻿@rendermode InteractiveServer
 @page "/tours/{id:guid}"
+@attribute [Authorize]
 
+@using Microsoft.AspNetCore.Authorization
 @using VirtualMuseum.Models
 @using VirtualMuseum.Services
 @inject ITourService TourService

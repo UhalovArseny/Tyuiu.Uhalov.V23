@@ -1,0 +1,98 @@
+﻿@rendermode InteractiveServer
+@page "/login"
+@attribute [AllowAnonymous]
+
+@using System.Net.Http
+@using System.Collections.Generic
+@using Microsoft.AspNetCore.Authorization
+@inject NavigationManager Nav
+@inject IHttpClientFactory HttpClientFactory
+
+<h3>Вход</h3>
+
+<div class="auth-card">
+
+    <form method="post" action="/auth/login">
+        <input class="auth-input" name="userName" placeholder="Логин" />
+        <input class="auth-input" name="password" type="password" placeholder="Пароль" />
+        <button class="nav-btn" type="submit">Войти</button>
+    </form>
+
+    <hr class="auth-sep" />
+
+    <div class="auth-subtitle">Нет аккаунта? Регистрация</div>
+
+    <form method="post" action="/auth/register">
+        <input class="auth-input" name="userName" placeholder="Новый логин" />
+        <input class="auth-input" name="password" type="password" placeholder="Новый пароль" />
+        <button class="nav-btn secondary" type="submit">Зарегистрироваться</button>
+    </form>
+
+</div>
+
+@code {
+    private string loginUser = "";
+    private string loginPass = "";
+    private string? loginError;
+
+    private string regUser = "";
+    private string regPass = "";
+    private string? regError;
+    private string? regOk;
+
+    private async Task DoLogin()
+    {
+        Console.WriteLine("DOLOGIN START");
+        loginError = null;
+
+        var content = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["userName"] = loginUser.Trim(),
+            ["password"] = loginPass
+        });
+
+        Console.WriteLine("SENDING REQUEST...");
+        var http = HttpClientFactory.CreateClient("ServerAPI");
+        var resp = await http.PostAsync("auth/login", content);
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            loginError = "Неверный логин или пароль.";
+            return;
+        }
+
+        Nav.NavigateTo("/user", forceLoad: true);
+    }
+
+
+    private async Task DoRegister()
+    {
+        regError = null;
+        regOk = null;
+
+        if (string.IsNullOrWhiteSpace(regUser) || string.IsNullOrWhiteSpace(regPass))
+        {
+            regError = "Введите логин и пароль для регистрации.";
+            return;
+        }
+
+        var content = new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["userName"] = regUser.Trim(),
+            ["password"] = regPass
+        });
+
+        var http = HttpClientFactory.CreateClient("ServerAPI");
+        var resp = await http.PostAsync("auth/register", content);
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            regError = "Не получилось зарегистрировать (логин занят?)";
+            return;
+        }
+
+        regOk = "Готово! Теперь войдите сверху.";
+        regUser = "";
+        regPass = "";
+    }
+}
