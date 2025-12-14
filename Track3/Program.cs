@@ -124,7 +124,7 @@ namespace Track3
                 await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
 
                 return Results.Redirect("/user");
-            }).AllowAnonymous();
+            }).AllowAnonymous().DisableAntiforgery();
 
 
             app.MapPost("/auth/register", async (HttpContext http, AuthService auth) =>
@@ -138,7 +138,7 @@ namespace Track3
                     return Results.BadRequest(error ?? "exists");
 
                 return Results.Ok();
-            }).AllowAnonymous();
+            }).AllowAnonymous().DisableAntiforgery();
 
 
 

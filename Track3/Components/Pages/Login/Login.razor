@@ -11,97 +11,25 @@
 <h3>Вход</h3>
 
 <div class="auth-card">
-    <input class="auth-input" placeholder="Логин" @bind="loginUser" />
-    <input class="auth-input" type="password" placeholder="Пароль" @bind="loginPass" />
-    <button type="button" class="nav-btn" @onclick="DoLogin">Войти</button>
 
-    @if (!string.IsNullOrWhiteSpace(loginError))
-    {
-        <div class="auth-error">@loginError</div>
-    }
+    <form method="post" action="/auth/login">
+        <input class="auth-input" name="userName" placeholder="Логин" required />
+        <input class="auth-input" name="password" type="password" placeholder="Пароль" required />
+
+        <!-- ВАЖНО: submit -->
+        <button type="submit" class="nav-btn">Войти</button>
+    </form>
 
     <hr class="auth-sep" />
 
     <div class="auth-subtitle">Нет аккаунта? Регистрация</div>
 
-    <input class="auth-input" placeholder="Новый логин" @bind="regUser" />
-    <input class="auth-input" type="password" placeholder="Новый пароль" @bind="regPass" />
-    <button type="button" class="nav-btn secondary" @onclick="DoRegister">Зарегистрироваться</button>
+    <form method="post" action="/auth/register">
+        <input class="auth-input" name="userName" placeholder="Новый логин" required />
+        <input class="auth-input" name="password" type="password" placeholder="Новый пароль" required />
 
-    @if (!string.IsNullOrWhiteSpace(regError))
-    {
-        <div class="auth-error">@regError</div>
-    }
-    @if (!string.IsNullOrWhiteSpace(regOk))
-    {
-        <div class="auth-ok">@regOk</div>
-    }
+        <!-- ВАЖНО: submit -->
+        <button type="submit" class="nav-btn secondary">Зарегистрироваться</button>
+    </form>
+
 </div>
-
-@code {
-    private string loginUser = "";
-    private string loginPass = "";
-    private string? loginError;
-
-    private string regUser = "";
-    private string regPass = "";
-    private string? regError;
-    private string? regOk;
-
-    private async Task DoLogin()
-    {
-        loginError = null;
-
-        var content = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["userName"] = loginUser.Trim(),
-            ["password"] = loginPass
-        });
-
-        var http = HttpClientFactory.CreateClient("ServerAPI");
-        var resp = await http.PostAsync("auth/login", content);
-
-        if (!resp.IsSuccessStatusCode)
-        {
-            loginError = "Неверный логин или пароль.";
-            return;
-        }
-
-        Nav.NavigateTo("/user", forceLoad: true);
-    }
-
-    private async Task DoRegister()
-    {
-        regError = null;
-        regOk = null;
-
-        if (string.IsNullOrWhiteSpace(regUser) || string.IsNullOrWhiteSpace(regPass))
-        {
-            regError = "Введите логин и пароль.";
-            return;
-        }
-
-        var content = new FormUrlEncodedContent(new Dictionary<string, string>
-        {
-            ["userName"] = regUser.Trim(),
-            ["password"] = regPass
-        });
-
-        var http = HttpClientFactory.CreateClient("ServerAPI");
-        var resp = await http.PostAsync("auth/register", content);
-
-        if (!resp.IsSuccessStatusCode)
-        {
-            var msg = await resp.Content.ReadAsStringAsync();
-            regError = string.IsNullOrWhiteSpace(msg) ? "Не получилось зарегистрировать." : msg;
-            return;
-        }
-
-        // ✅ остаёмся на логине
-        regOk = "Готово! Теперь войдите сверху.";
-
-        // очистка полей регистрации
-        regUser = "";
-        regPass = "";
-    }
-}
