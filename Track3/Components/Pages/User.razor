@@ -21,6 +21,7 @@
 
 <h3>Профиль</h3>
 
+
 @if (loading)
 {
     <p>Загрузка профиля...</p>
@@ -32,6 +33,15 @@ else if (me is null)
 else
 {
     <div class="user-card">
+        <style>
+            .user-card {
+                border: 3px solid hotpink !important;
+                background: #111827 !important;
+                color: white !important;
+            }
+        </style>
+
+
         <h4>@me.UserName</h4>
         <p class="user-meta">
             Регистрация: @me.CreatedAtUtc.ToLocalTime().ToString("g") <br />
@@ -86,9 +96,9 @@ else
                 {
                     <li>
                         <span>@t.Title</span>
-                        @if (t.StartTime.HasValue)
+                        @if (t.StartTimeUtc.HasValue)
                         {
-                            <span class="user-tag">@t.StartTime.Value.ToString("g")</span>
+                            <span class="user-tag">@t.StartTimeUtc.Value.ToLocalTime().ToString("g")</span>
                         }
                     </li>
                 }
@@ -97,7 +107,14 @@ else
     </div>
 }
 
+
 @code {
+    int usersCount;
+    protected override async Task OnInitializedAsync()
+    {
+        usersCount = await Db.Users.CountAsync();
+        await LoadProfileAsync();
+    }
     private bool loading = true;
 
     private AppUser? me;
@@ -110,10 +127,10 @@ else
 
     private int progressPercent = 0;
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadProfileAsync();
-    }
+    // protected override async Task OnInitializedAsync()
+    // {
+    //     await LoadProfileAsync();
+    // }
 
     private async Task LoadProfileAsync()
     {

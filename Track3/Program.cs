@@ -7,7 +7,8 @@ using Track3.Components.Data;
 using Track3.Components.Services.Implementations;
 using VirtualMuseum.Data;
 using VirtualMuseum.Services;
-
+using System.IO;
+using Microsoft.Data.Sqlite;
 
 
 namespace Track3
@@ -29,15 +30,18 @@ namespace Track3
 
             //  Сервисы (добавь вот это)
             builder.Services.AddSingleton<IExhibitService, ExhibitService>();
-            builder.Services.AddSingleton<ITourService, TourService>();
+            builder.Services.AddScoped<ITourService, Track3.Components.Services.Implementations.TourServiceDb>();
+
+
+
             builder.Services.AddSingleton<IFeedbackService, FeedbackService>();
             builder.Services.AddSingleton<IVisitorService, VisitorService>();
-           
-            
+
+
+
+
 
             // SQLite БД
-            builder.Services.AddDbContext<AppDbContext>(o =>
-                o.UseSqlite("Data Source=museum.db"));
 
             // Auth
             builder.Services.AddScoped<AuthService>();
@@ -70,6 +74,10 @@ namespace Track3
 
             builder.Services.AddHttpContextAccessor();
 
+            var dbPath = Path.Combine(builder.Environment.ContentRootPath, "museum.db");
+
+            builder.Services.AddDbContext<AppDbContext>(o =>
+                o.UseSqlite($"Data Source={dbPath}"));
 
             var app = builder.Build();
 
@@ -106,19 +114,16 @@ namespace Track3
             app.MapPost("/auth/login", async (HttpContext http, AuthService auth) =>
             {
                 var form = await http.Request.ReadFormAsync();
-                var userName = form["userName"].ToString();
+                var userName = form["userName"].ToString().Trim();
                 var password = form["password"].ToString();
 
                 var principal = await auth.LoginAsync(userName, password);
-
                 if (principal == null)
-                {
-                    // важно: вернём текст, чтобы ты видел причину
-                    return Results.BadRequest("bad_login_or_password");
-                }
+                    return Results.BadRequest("bad");
 
                 await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
-                return Results.Ok("ok");
+
+                return Results.Redirect("/user");
             }).AllowAnonymous();
 
 
@@ -128,12 +133,13 @@ namespace Track3
                 var userName = form["userName"].ToString().Trim();
                 var password = form["password"].ToString();
 
-                var (ok, err) = await auth.RegisterAsync(userName, password);
+                var (ok, error) = await auth.RegisterAsync(userName, password);
                 if (!ok)
-                    return Results.BadRequest(err ?? "exists");
+                    return Results.BadRequest(error ?? "exists");
 
                 return Results.Ok();
             }).AllowAnonymous();
+
 
 
 

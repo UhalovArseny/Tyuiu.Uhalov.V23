@@ -1,6 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
 
 namespace VirtualMuseum.Models
 {
@@ -10,14 +10,22 @@ namespace VirtualMuseum.Models
         public Guid Id { get; set; } = Guid.NewGuid();
 
         [Required]
-        public string Title { get; set; }
+        public string Title { get; set; } = "";
 
-        public string Description { get; set; }
+        public string Description { get; set; } = "";
 
-        // Храним список ID экспонатов
-        public List<Guid> ExhibitIds { get; set; } = new();
+        public DateTime? StartTimeUtc { get; set; }
+        public int DurationMinutes { get; set; } = 60;
 
-        public TimeSpan? Duration { get; set; }
-        public DateTime? StartTime { get; set; }
+        // ✅ хранится в БД
+        public string ExhibitIdsJson { get; set; } = "[]";
+
+        // ✅ удобно в коде, но EF это не мапит
+        [NotMapped]
+        public List<Guid> ExhibitIds
+        {
+            get => JsonSerializer.Deserialize<List<Guid>>(ExhibitIdsJson) ?? new();
+            set => ExhibitIdsJson = JsonSerializer.Serialize(value ?? new());
+        }
     }
 }

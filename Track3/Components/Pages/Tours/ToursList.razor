@@ -1,156 +1,262 @@
 ﻿@rendermode InteractiveServer
 @page "/tours"
-@using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
+
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@using Track3.Components.Data
+@using VirtualMuseum.Models
+@using VirtualMuseum.Services
+
+@inject ITourService TourService
+@inject AppDbContext Db
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
 
 <h3>Виртуальные туры</h3>
 
-@if (!tours.Any())
+
+
+
+@if (loading)
 {
-    <p>Туров пока нет. Создайте первый тур ниже.</p>
+    <p>Загрузка...</p>
 }
 else
 {
-    <div class="tours-list">
-        @foreach (var tour in tours)
-        {
-            <div class="tour-card">
-                <div class="tour-card-main">
-                    <h4>@tour.Title</h4>
-                    <p class="tour-desc">@tour.Description</p>
+    if (!tours.Any())
+    {
+        <p>Туров пока нет. Создайте первый тур ниже.</p>
+    }
+    else
+    {
+        <div class="tours-list">
+            @foreach (var tour in tours)
+            {
+                <div class="tour-card">
+                    <div class="tour-card-main">
+                        <h4>@tour.Title</h4>
+                        <p class="tour-desc">@tour.Description</p>
 
-                    <div class="tour-meta">
-                        @if (!string.IsNullOrWhiteSpace(tour.Date) || !string.IsNullOrWhiteSpace(tour.Time))
-                        {
-                            <div><b>Начало:</b> @tour.Date @tour.Time</div>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(tour.DurationMinutes))
-                        {
+                        <div class="tour-meta">
+                            @if (tour.StartTimeUtc.HasValue)
+                            {
+                                <div><b>Начало:</b> @tour.StartTimeUtc.Value.ToLocalTime().ToString("f")</div>
+                            }
                             <div><b>Длительность:</b> @tour.DurationMinutes мин</div>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(tour.ExhibitCount))
+                            <div><b>Экспонатов в туре:</b> @(tour.ExhibitIds?.Count ?? 0)</div>
+                        </div>
+                    </div>
+
+                    <div class="tour-card-actions">
+                    <button class="tour-button"
+                            @onclick="() => OpenTour(tour.Id)">
+                        Подробнее
+                    </button>
+
+
+
+
+
+                        @if (uid.HasValue)
                         {
-                            <div><b>Экспонатов в туре:</b> @tour.ExhibitCount</div>
+                            if (visitedTourIds.Contains(tour.Id))
+                            {
+                                <span class="visited-chip">Посещено</span>
+                            }
+                            else
+                            {
+                                <button class="tour-button" @onclick="() => MarkVisited(tour.Id)">
+                                    Отметить посещённым
+                                </button>
+                            }
                         }
+
+                        <button class="tour-button-danger" @onclick="() => DeleteTour(tour.Id)">
+                            Удалить
+                        </button>
                     </div>
                 </div>
+            }
+        </div>
+    }
 
-                <div class="tour-card-actions">
-                    <button class="tour-button-danger"
-                            @onclick="() => DeleteTour(tour)">
-                        Удалить тур
-                    </button>
-                </div>
+    <hr />
+
+    <h4>Создать новый тур</h4>
+
+    <div class="tour-form">
+        <div class="tour-form-row">
+            <input class="tour-input" placeholder="Название тура" @bind="form.Title" />
+        </div>
+
+        <div class="tour-form-row">
+            <textarea class="tour-textarea" placeholder="Краткое описание" @bind="form.Description"></textarea>
+        </div>
+
+        <div class="tour-form-row-inline">
+            <div class="tour-form-group">
+                <label>Дата начала</label>
+                <input type="date" class="tour-input" @bind="form.Date" />
             </div>
+
+            <div class="tour-form-group">
+                <label>Время начала</label>
+                <input type="time" class="tour-input" @bind="form.Time" />
+            </div>
+
+            <div class="tour-form-group">
+                <label>Длительность (мин)</label>
+                <input type="number" class="tour-input" @bind="form.DurationMinutes" />
+            </div>
+        </div>
+
+        <button class="tour-button" @onclick="CreateTour">Создать тур</button>
+
+        @if (!string.IsNullOrWhiteSpace(createError))
+        {
+            <div class="auth-error" style="margin-top:.5rem">@createError</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(createOk))
+        {
+            <div class="auth-ok" style="margin-top:.5rem">@createOk</div>
         }
     </div>
 }
 
-<hr />
-
-<h4>Создать новый тур</h4>
-
-<div class="tour-form">
-    <div class="tour-form-row">
-        <input class="tour-input"
-               placeholder="Название тура"
-               @bind="form.Title" />
-    </div>
-
-    <div class="tour-form-row">
-        <textarea class="tour-textarea"
-                  placeholder="Краткое описание"
-                  @bind="form.Description"></textarea>
-    </div>
-
-    <div class="tour-form-row-inline">
-        <div class="tour-form-group">
-            <label>Дата начала</label>
-            <input type="text"
-                   class="tour-input"
-                   placeholder="Например: 12.12.2025"
-                   @bind="form.Date" />
-        </div>
-
-        <div class="tour-form-group">
-            <label>Время начала</label>
-            <input type="text"
-                   class="tour-input"
-                   placeholder="Например: 14:30"
-                   @bind="form.Time" />
-        </div>
-
-        <div class="tour-form-group">
-            <label>Длительность (мин)</label>
-            <input type="text"
-                   class="tour-input"
-                   placeholder="Например: 60"
-                   @bind="form.DurationMinutes" />
-        </div>
-    </div>
-
-    <div class="tour-form-row">
-        <label>Количество экспонатов в туре</label>
-        <input type="text"
-               class="tour-input"
-               placeholder="Например: 5"
-               @bind="form.ExhibitCount" />
-    </div>
-
-    <button class="tour-button" @onclick="CreateTour">
-        Создать тур
-    </button>
-</div>
-
 @code {
-    private List<TourViewModel> tours = new();
+    private bool loading = true;
 
-    private TourFormModel form = new();
+    private List<Tour> tours = new();
+    private HashSet<Guid> visitedTourIds = new();
 
-    private void CreateTour()
+    private int? uid;
+
+    private string? createError;
+    private string? createOk;
+
+    private TourForm form = new();
+
+    private void OpenTour(Guid id)
     {
-        if (string.IsNullOrWhiteSpace(form.Title))
-            return;
-
-        var tour = new TourViewModel
-        {
-            Title = form.Title!.Trim(),
-            Description = form.Description?.Trim(),
-            Date = form.Date,
-            Time = form.Time,
-            DurationMinutes = form.DurationMinutes,
-            ExhibitCount = form.ExhibitCount
-        };
-
-        tours.Add(tour);
-
-        form = new TourFormModel();
-        StateHasChanged();
+        Nav.NavigateTo($"/tours/{id}");
     }
 
-    private void DeleteTour(TourViewModel tour)
-    {
-        tours.Remove(tour);
-        StateHasChanged();
-    }
 
-    private class TourViewModel
-    {
-        public string Title { get; set; } = string.Empty;
-        public string? Description { get; set; }
-        public string? Date { get; set; }
-        public string? Time { get; set; }
-        public string? DurationMinutes { get; set; }
-        public string? ExhibitCount { get; set; }
-    }
-
-    private class TourFormModel
+    private class TourForm
     {
         public string? Title { get; set; }
         public string? Description { get; set; }
-        public string? Date { get; set; }
-        public string? Time { get; set; }
-        public string? DurationMinutes { get; set; }
-        public string? ExhibitCount { get; set; }
+
+        // ✅ чтобы не было ошибок типов @bind на date/time
+        public DateOnly? Date { get; set; }
+        public TimeOnly? Time { get; set; }
+
+        public int DurationMinutes { get; set; } = 60;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ResolveUidAsync();
+        await ReloadAsync();
+        loading = false;
+    }
+
+    private async Task ResolveUidAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        var uidStr = user.FindFirst("uid")?.Value;
+        if (int.TryParse(uidStr, out var parsed))
+            uid = parsed;
+        else
+            uid = null;
+    }
+
+    private async Task ReloadAsync()
+    {
+        tours = (await TourService.GetAllAsync()).ToList();
+        await LoadVisitedToursAsync();
+    }
+
+    private async Task LoadVisitedToursAsync()
+    {
+        visitedTourIds.Clear();
+        if (!uid.HasValue) return;
+
+        var ids = await Db.VisitedTours
+            .Where(v => v.UserId == uid.Value)
+            .Select(v => v.TourId)
+            .ToListAsync();
+
+        visitedTourIds = ids.ToHashSet();
+    }
+
+    private async Task MarkVisited(Guid tourId)
+    {
+        if (!uid.HasValue) return;
+
+        var exists = await Db.VisitedTours.AnyAsync(v => v.UserId == uid.Value && v.TourId == tourId);
+        if (exists)
+        {
+            visitedTourIds.Add(tourId);
+            return;
+        }
+
+        Db.VisitedTours.Add(new Track3.Components.Models.VisitedTour
+        {
+            UserId = uid.Value,
+            TourId = tourId,
+            VisitedAtUtc = DateTime.UtcNow
+        });
+
+        await Db.SaveChangesAsync();
+
+        visitedTourIds.Add(tourId);
+        StateHasChanged();
+    }
+
+    private async Task CreateTour()
+    {
+        createError = null;
+        createOk = null;
+
+        if (string.IsNullOrWhiteSpace(form.Title))
+        {
+            createError = "Введите название тура.";
+            return;
+        }
+
+        DateTime? startUtc = null;
+        if (form.Date.HasValue && form.Time.HasValue)
+        {
+            var local = form.Date.Value.ToDateTime(form.Time.Value);
+            // local тут "локальный" смысл, переводим в UTC
+            startUtc = DateTime.SpecifyKind(local, DateTimeKind.Local).ToUniversalTime();
+        }
+
+        var tour = new Tour
+        {
+            Title = form.Title.Trim(),
+            Description = (form.Description ?? "").Trim(),
+            DurationMinutes = form.DurationMinutes <= 0 ? 60 : form.DurationMinutes,
+            StartTimeUtc = startUtc,
+            ExhibitIds = new List<Guid>() // пока пусто (потом добавим выбор экспонатов)
+        };
+
+        await TourService.CreateAsync(tour);
+
+        form = new TourForm();
+        createOk = "Тур создан ✅";
+
+        await ReloadAsync();
+    }
+
+    private async Task DeleteTour(Guid id)
+    {
+        await TourService.DeleteAsync(id);
+        await ReloadAsync();
     }
 }

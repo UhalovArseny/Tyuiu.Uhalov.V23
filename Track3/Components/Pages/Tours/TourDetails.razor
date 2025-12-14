@@ -3,64 +3,80 @@
 @attribute [Authorize]
 
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
 @using VirtualMuseum.Models
 @using VirtualMuseum.Services
+@using Track3.Components.Data
+@using Track3.Components.Models
+
 @inject ITourService TourService
-@inject IExhibitService ExhibitService
+@inject AppDbContext Db
+@inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Nav
 
-@if (tour == null)
+<h3>Детали тура</h3>
+
+@if (loading)
 {
-    <h3>Тур не найден</h3>
-    <a href="/tours" class="back-link">← Назад к списку туров</a>
+    <p>Загрузка тура...</p>
+}
+else if (tour == null)
+{
+    <p>Тур не найден.</p>
+    <a href="/tours">← Назад</a>
 }
 else
 {
-    <h3>@tour.Title</h3>
-
     <div class="tour-details">
-        <div class="tour-details-main">
+
+        <h2>@tour.Title</h2>
+
+        @if (!string.IsNullOrWhiteSpace(tour.Description))
+        {
             <p class="tour-desc">@tour.Description</p>
+        }
 
-            <div class="tour-meta">
-                @if (tour.StartTime.HasValue)
-                {
-                    <div><b>Начало:</b> @tour.StartTime.Value.ToString("f")</div>
-                }
-                @if (tour.Duration.HasValue)
-                {
-                    <div><b>Длительность:</b> @tour.Duration.Value.TotalMinutes.ToString("0") мин</div>
-                }
-                <div><b>Экспонатов в туре:</b> @tour.ExhibitIds.Count</div>
+        <div class="tour-meta">
+            @if (tour.StartTimeUtc.HasValue)
+            {
+                <div>
+                    <b>Начало:</b>
+                    @tour.StartTimeUtc.Value.ToLocalTime().ToString("f")
+                </div>
+            }
+
+            <div>
+                <b>Длительность:</b> @tour.DurationMinutes мин
             </div>
-
-            <button class="tour-button-danger" @onclick="DeleteTour">
-                Удалить тур
-            </button>
-
-            <a href="/tours" class="back-link">← Назад к списку туров</a>
         </div>
 
-        <div class="tour-details-exhibits">
-            <h4>Экспонаты в этом туре</h4>
-
-            @if (!exhibits.Any())
+        <div class="visit-status" style="margin-top: 1rem;">
+            @if (visited)
             {
-                <p>В этот тур пока не добавлено ни одного экспоната.</p>
+                <span class="visited-badge">Вы уже проходили этот тур ✅</span>
             }
             else
             {
-                <ul class="tour-exhibit-list">
-                    @foreach (var ex in exhibits)
-                    {
-                        <li>
-                            <a href="/exhibits/@ex.Id">@ex.Name</a>
-                            <span class="tour-exhibit-era">@ex.Era</span>
-                        </li>
-                    }
-                </ul>
+                <button class="visit-button" @onclick="MarkVisited">
+                    Отметить как посещённый
+                </button>
             }
         </div>
+
+        @if (!string.IsNullOrWhiteSpace(visitToast))
+        {
+            <div class="toast-popup">@visitToast</div>
+        }
+
+        <hr />
+
+        <button class="tour-button-danger" @onclick="DeleteTour">
+            Удалить тур
+        </button>
+
+        <br />
+        <a href="/tours" class="back-link">← Назад к списку туров</a>
     </div>
 }
 
@@ -68,23 +84,65 @@ else
     [Parameter] public Guid id { get; set; }
 
     private Tour? tour;
-    private List<Exhibit> exhibits = new();
+    private bool loading = true;
+    private bool visited;
+    private string? visitToast;
 
     protected override async Task OnInitializedAsync()
     {
         tour = await TourService.GetAsync(id);
+        await LoadVisitedAsync();
+        loading = false;
+    }
 
-        if (tour != null && tour.ExhibitIds != null && tour.ExhibitIds.Any())
+    private async Task LoadVisitedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        var uidStr = user.FindFirst("uid")?.Value;
+        if (!int.TryParse(uidStr, out var uid) || tour == null)
+            return;
+
+        visited = await Db.VisitedTours
+            .AnyAsync(v => v.UserId == uid && v.TourId == tour.Id);
+    }
+
+    private async Task MarkVisited()
+    {
+        if (tour == null)
+            return;
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        var uidStr = user.FindFirst("uid")?.Value;
+        if (!int.TryParse(uidStr, out var uid))
+            return;
+
+        var exists = await Db.VisitedTours
+            .AnyAsync(v => v.UserId == uid && v.TourId == tour.Id);
+
+        if (!exists)
         {
-            var all = (await ExhibitService.GetAllAsync()).ToList();
-            var dict = all.ToDictionary(e => e.Id, e => e);
-
-            foreach (var exId in tour.ExhibitIds)
+            Db.VisitedTours.Add(new VisitedTour
             {
-                if (dict.TryGetValue(exId, out var ex))
-                    exhibits.Add(ex);
-            }
+                UserId = uid,
+                TourId = tour.Id,
+                VisitedAtUtc = DateTime.UtcNow
+            });
+
+            await Db.SaveChangesAsync();
         }
+
+        visited = true;
+
+        visitToast = "Тур добавлен в посещённые ✅";
+        StateHasChanged();
+
+        await Task.Delay(1500);
+        visitToast = null;
+        StateHasChanged();
     }
 
     private async Task DeleteTour()

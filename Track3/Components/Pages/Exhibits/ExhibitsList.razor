@@ -10,19 +10,14 @@
 @using Track3.Components.Data
 
 @inject IExhibitService ExhibitService
-@inject NavigationManager Nav
 @inject AppDbContext Db
 @inject AuthenticationStateProvider AuthStateProvider
 
 <h3>Список экспонатов</h3>
 
-@if (exhibits == null)
+@if (!exhibits.Any())
 {
     <p>Загрузка...</p>
-}
-else if (!exhibits.Any())
-{
-    <p>Экспонаты отсутствуют.</p>
 }
 else
 {
@@ -37,7 +32,7 @@ else
                    title="@ex.Name"
                    href="/exhibits/@ex.Id"
                    @onmouseover="@(() => OnPointHover(ex.Id))"
-                   @onmouseout="@OnPointHoverEnd">
+                   @onmouseout="@(() => OnPointHoverEnd())">
                 </a>
             }
         }
@@ -76,8 +71,6 @@ else
 @code {
     private List<Exhibit> exhibits = new();
     private Guid? hoveredExhibitId;
-
-    // сюда загрузим все посещённые экспонаты пользователя
     private HashSet<Guid> visitedIds = new();
 
     protected override async Task OnInitializedAsync()
@@ -98,7 +91,6 @@ else
         if (!int.TryParse(uidStr, out var uid))
             return;
 
-        // ВАЖНО: тут поле обычно UserId, НЕ UserID
         var ids = await Db.VisitedExhibits
             .Where(v => v.UserId == uid)
             .Select(v => v.ExhibitId)
